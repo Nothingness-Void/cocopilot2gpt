@@ -1,0 +1,55 @@
+name: Publish Docker image
+
+on:
+  workflow_dispatch: # 手动触发
+  workflow_run:
+    workflows: ["Upstream Sync"]
+    types:
+    - completed
+  push:
+    # 每次 push tag 时进行构建，不需要每次 push 都构建。 使用通配符匹配每次 tag 的提交，记得 tag 名一定要以 v 开头
+    tags:
+      - v*
+
+env:
+  # 设置 docker 镜像名
+  IMAGE_NAME: nothingnessvoid/cocopilot-chatgpt
+
+jobs:
+  push_to_registry:
+    # 如果需要在构建前进行测试的话需要取消下面的注释和上面对应的 test 动作的注释。
+    # needs: test
+
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: nothingnessvoid/cocopilot-chatgpt
+
+      - name: Create and use a new builder instance
+        run: |
+          docker buildx create --name mybuilder
+          docker buildx use mybuilder
+
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: nothingnessvoid/cocopilot-chatgpt:latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache
